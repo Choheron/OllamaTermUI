@@ -1,0 +1,49 @@
+import requests
+import json
+
+def get_installed_models():
+  # Query server for models
+  response = requests.get("http://192.168.1.200:11434/api/tags")
+  modelList = response.json()['models']
+  return modelList
+
+
+def get_response(model: str, prompt: str):
+  """Query the passed in model for a response."""
+  # Build query JSON
+  reqBody = {
+    "model": model,
+    "prompt": prompt,
+    "stream": False
+  }
+  # Query Backend
+  response = requests.post("http://192.168.1.200:11434/api/generate", json=reqBody)
+  modelResponse =  response.json()['response']
+  return modelResponse
+
+
+def get_converstaion_response(model: str, conversation: list[dict]):
+  """Query the passed in model for a response based on passed in conversation data. Returns raw response from Ollama."""
+  # Build query JSON
+  reqBody = {
+    "model": model,
+    "messages": conversation,
+    "stream": False
+  }
+  # Query Backend
+  response = requests.post("http://192.168.1.200:11434/api/chat", json=reqBody)
+  resData =  response.json()
+  return resData
+
+
+def stream_conversation_response(model: str, conversation: list[dict]):
+  """Query the passed in model for a streaming response. Yields parsed response chunks until done."""
+  reqBody = {
+    "model": model,
+    "messages": conversation,
+    "stream": True
+  }
+  response = requests.post("http://192.168.1.200:11434/api/chat", json=reqBody, stream=True)
+  for line in response.iter_lines():
+    if line:
+      yield json.loads(line)

@@ -1,0 +1,27 @@
+#statusBar {
+  height: 7;
+  padding: 1;
+  dock: top;
+  border: ascii blue;
+}
+
+#modelSelect {
+  width: 100%;
+}
+
+#sidebar {
+  width: 1fr;
+  height: 100%;
+}
+
+#convoListView {
+  height: 1fr;
+}
+
+#button_newConvo {
+  width: 100%;
+}
+
+#button_convoPersist {
+  width: 100%;
+}

@@ -1,0 +1,23 @@
+ConfirmClearModal {
+  align: center middle;
+}
+
+#confirmDialog {
+  width: 40;
+  height: auto;
+  padding: 1 2;
+  border: thick $error;
+  background: $surface;
+}
+
+#confirmDialog Label {
+  width: 1fr;
+  content-align: center middle;
+  padding-bottom: 1;
+}
+
+#confirmButtons {
+  width: 1fr;
+  height: auto;
+  align-horizontal: center;
+}

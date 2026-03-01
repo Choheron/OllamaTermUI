@@ -1,0 +1,23 @@
+ConfirmCarryOverModal {
+  align: center middle;
+}
+
+#carryOverDialog {
+  width: 50;
+  height: auto;
+  padding: 1 2;
+  border: thick $warning;
+  background: $surface;
+}
+
+#carryOverDialog Label {
+  width: 1fr;
+  content-align: center middle;
+  padding-bottom: 1;
+}
+
+#carryOverButtons {
+  width: 1fr;
+  height: auto;
+  align-horizontal: center;
+}

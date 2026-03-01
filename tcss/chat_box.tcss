@@ -1,0 +1,47 @@
+#inputTray {
+  dock: bottom;
+  height: auto;
+  max_height: 10;
+}
+
+#userInput {
+  height: auto;
+  max_height: 10;
+}
+
+#convoViewport {
+  height: 1fr;
+  width: 1fr;
+  max_height: 100%;
+  overflow_y: scroll;
+  align_vertical: bottom;
+}
+
+.userMessage {
+  width: 100w;
+  content-align-horizontal: right;
+  padding: 1 2;
+  text-align: left;
+}
+
+.systemMessage {
+  width: 100w;
+  content-align-horizontal: left;
+  text-align: left;
+  margin: 0;
+}
+
+.modelMessage {
+  width: auto;
+  max-width: 100%;
+  content-align-horizontal: left;
+  padding: 0 2 0 2;
+  text-align: left;
+  border: round $primary;
+  margin: 1 0;
+}
+
+.modelMessage MarkdownParagraph {
+  margin-bottom: 0;
+  margin-top: 0;
+}

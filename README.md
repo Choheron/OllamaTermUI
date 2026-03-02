@@ -1,1 +1,1 @@
-![Ollama Terminal UI Icon, A Llama with VR goggles on and a terminal icon.](/assets/OllamaTermUI_Icon_V2.png "OllamaTermUI")
+![Ollama Terminal UI Icon, A Llama with VR goggles on and a terminal icon.](/assets/OllamaTermUI_TitleCard.png "OllamaTermUI")

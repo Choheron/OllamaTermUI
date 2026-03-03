@@ -48,7 +48,7 @@ python ollamatermui.py
 
 ### 3. Configure your server
 
-On first launch the app defaults to `http://192.168.1.200:11434`. Open the **Settings** panel (⚙ button, top-left) to add your Ollama server URL and give it a name. The app will test the connection before saving. Your server list is persisted to `~/.ollamatermui/config.json` and loaded automatically on every subsequent launch.
+On first launch the app defaults to `http://localhost:11434`. Open the **Settings** panel (⚙ button, top-left) to add your Ollama server URL and give it a name. The app will test the connection before saving. Your server list is persisted to `~/.ollamatermui/config.json` and loaded automatically on every subsequent launch.
 
 ---
 

@@ -1,7 +1,7 @@
 from textual import work
 from textual.screen import ModalScreen
 from textual.app import ComposeResult
-from textual.widgets import Label, Button, Rule, TextArea, Input
+from textual.widgets import Label, Button, Rule, TextArea, Input, DataTable
 from textual.containers import Vertical, Horizontal
 
 from utils.ollama_utils import check_connection
@@ -9,46 +9,150 @@ from utils.ollama_utils import check_connection
 
 class SettingsModal(ModalScreen):
 
-  def __init__(self, current_system_prompt: str, current_url: str):
+  def __init__(self, servers: list[dict], active_server_name: str):
     super().__init__()
-    self.current_system_prompt = current_system_prompt
-    self.current_url = current_url
+    self._servers: list[dict] = [dict(s) for s in servers]
+    self._active_name: str = active_server_name
+    self._selected_name: str | None = None
 
   def compose(self) -> ComposeResult:
     with Vertical(id="settingsDialog"):
       yield Label("Settings", id="settingsTitle")
       yield Rule()
-      yield Label("Ollama URL", classes="sectionHeader")
-      yield Input(self.current_url, id="ollamaUrlInput")
+      yield Label("Servers", classes="sectionHeader")
+      yield DataTable(id="serversTable", cursor_type="row", show_cursor=True)
+      with Horizontal(id="serverActions"):
+        yield Button("Set Active", id="button_setActiveServer", disabled=True)
+        yield Button("Delete", id="button_deleteServer", variant="error", disabled=True)
+      yield Label("Add Server", classes="sectionHeader")
+      with Horizontal(id="addServerRow"):
+        yield Input(placeholder="Name", id="newServerName")
+        yield Input(placeholder="http://...", id="newServerUrl")
+      yield Button("Test & Add", id="button_testAndAdd")
+      yield Label("", id="addServerStatus")
+      yield Rule()
       yield Label("System Prompt", classes="sectionHeader")
       yield Label("Sent to the model at the start of every conversation.", classes="settingsHint")
-      yield TextArea(self.current_system_prompt, id="systemPromptInput")
-      yield Label("", id="connectionStatus")
+      yield TextArea(self._active_server_prompt(), id="systemPromptInput")
       with Horizontal(id="settingsButtons"):
         yield Button("Save", id="button_saveSettings", variant="success")
         yield Button("Cancel", id="button_cancelSettings")
 
+  def _active_server_prompt(self) -> str:
+    server = next((s for s in self._servers if s["name"] == self._active_name), None)
+    return server.get("system_prompt", "") if server else ""
+
+  def _save_prompt_to_active_server(self) -> None:
+    prompt = self.query_one("#systemPromptInput", TextArea).text
+    for s in self._servers:
+      if s["name"] == self._active_name:
+        s["system_prompt"] = prompt
+        break
+
+  def on_mount(self) -> None:
+    table = self.query_one("#serversTable", DataTable)
+    table.add_columns("Active", "Name", "URL")
+    self._rebuild_table()
+
+  def _rebuild_table(self) -> None:
+    table = self.query_one("#serversTable", DataTable)
+    table.clear()
+    for server in self._servers:
+      active_mark = "●" if server["name"] == self._active_name else ""
+      table.add_row(active_mark, server["name"], server["url"], key=server["name"])
+    self._update_delete_button()
+
+  def _update_delete_button(self) -> None:
+    btn = self.query_one("#button_deleteServer", Button)
+    btn.disabled = len(self._servers) <= 1 or self._selected_name is None
+
+  def on_data_table_row_highlighted(self, event: DataTable.RowHighlighted) -> None:
+    self._selected_name = event.row_key.value if event.row_key else None
+    self.query_one("#button_setActiveServer", Button).disabled = self._selected_name is None
+    self._update_delete_button()
+
   def on_button_pressed(self, event: Button.Pressed) -> None:
-    if event.button.id == "button_saveSettings":
-      url = self.query_one("#ollamaUrlInput", Input).value.strip()
-      prompt_text = self.query_one("#systemPromptInput", TextArea).text
-      self.query_one("#button_saveSettings", Button).disabled = True
-      self.query_one("#connectionStatus", Label).update("Connecting...")
-      self._test_connection(url, prompt_text)
+    if event.button.id == "button_setActiveServer":
+      self._handle_set_active()
+    elif event.button.id == "button_deleteServer":
+      self._handle_delete()
+    elif event.button.id == "button_testAndAdd":
+      self._handle_test_and_add()
+    elif event.button.id == "button_saveSettings":
+      self._save_prompt_to_active_server()
+      self.dismiss({
+        "servers": self._servers,
+        "active_server_name": self._active_name,
+      })
     elif event.button.id == "button_cancelSettings":
       self.dismiss(None)
 
+  def _handle_set_active(self) -> None:
+    if self._selected_name is None:
+      return
+    self._save_prompt_to_active_server()
+    self._active_name = self._selected_name
+    self.query_one("#systemPromptInput", TextArea).load_text(self._active_server_prompt())
+    self._rebuild_table()
+
+  def _handle_delete(self) -> None:
+    if self._selected_name is None or len(self._servers) <= 1:
+      return
+    self._servers = [s for s in self._servers if s["name"] != self._selected_name]
+    if self._active_name == self._selected_name:
+      self._active_name = self._servers[0]["name"]
+    self._selected_name = None
+    self.query_one("#button_setActiveServer", Button).disabled = True
+    self._rebuild_table()
+
+  def _handle_test_and_add(self) -> None:
+    name = self.query_one("#newServerName", Input).value.strip()
+    url = self.query_one("#newServerUrl", Input).value.strip()
+    status = self.query_one("#addServerStatus", Label)
+
+    if not name:
+      status.remove_class("success")
+      status.add_class("error")
+      status.update("Name cannot be empty.")
+      return
+    if any(s["name"] == name for s in self._servers):
+      status.remove_class("success")
+      status.add_class("error")
+      status.update(f'A server named "{name}" already exists.')
+      return
+    if not url:
+      status.remove_class("success")
+      status.add_class("error")
+      status.update("URL cannot be empty.")
+      return
+
+    self.query_one("#button_testAndAdd", Button).disabled = True
+    status.remove_class("success", "error")
+    status.update("Testing connection...")
+    self._test_and_add(name, url)
+
   @work(thread=True)
-  def _test_connection(self, url: str, prompt_text: str) -> None:
+  def _test_and_add(self, name: str, url: str) -> None:
     success = check_connection(url)
     if success:
-      self.app.call_from_thread(self._on_connect_success, {"url": url, "system_prompt": prompt_text})
+      self.app.call_from_thread(self._on_add_success, name, url)
     else:
-      self.app.call_from_thread(self._on_connect_failure, f"Could not connect to {url}")
+      self.app.call_from_thread(self._on_add_failure, f"Could not connect to {url}")
 
-  def _on_connect_success(self, result: dict) -> None:
-    self.dismiss(result)
+  def _on_add_success(self, name: str, url: str) -> None:
+    self._servers.append({"name": name, "url": url, "system_prompt": ""})
+    self._rebuild_table()
+    self.query_one("#newServerName", Input).value = ""
+    self.query_one("#newServerUrl", Input).value = ""
+    status = self.query_one("#addServerStatus", Label)
+    status.remove_class("error")
+    status.add_class("success")
+    status.update(f'✓ "{name}" added.')
+    self.query_one("#button_testAndAdd", Button).disabled = False
 
-  def _on_connect_failure(self, error: str) -> None:
-    self.query_one("#button_saveSettings", Button).disabled = False
-    self.query_one("#connectionStatus", Label).update(error)
+  def _on_add_failure(self, error: str) -> None:
+    status = self.query_one("#addServerStatus", Label)
+    status.remove_class("success")
+    status.add_class("error")
+    status.update(error)
+    self.query_one("#button_testAndAdd", Button).disabled = False

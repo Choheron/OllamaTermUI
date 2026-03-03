@@ -1,0 +1,49 @@
+from textual.screen import ModalScreen
+from textual.app import ComposeResult
+from textual.widgets import Label, Button, Rule, Markdown
+from textual.containers import Vertical
+from textual import work
+
+from utils.ollama_utils import get_converstaion_response
+
+
+class SummaryModal(ModalScreen):
+
+  def __init__(self, model_name: str, conversation: list[dict]):
+    super().__init__()
+    self.model_name = model_name
+    self.conversation = conversation
+
+  def compose(self) -> ComposeResult:
+    with Vertical(id="summaryDialog"):
+      yield Label("Conversation Summary", id="summaryTitle")
+      yield Rule()
+      yield Label("Generating summary...", id="summaryContent")
+      yield Button("Close", id="button_closeSummary", disabled=True)
+
+  def on_mount(self) -> None:
+    self._generate_summary()
+
+  @work(thread=True)
+  def _generate_summary(self) -> None:
+    try:
+      messages = list(self.conversation) + [
+        {"role": "user", "content": "Please provide a concise summary of our conversation so far. Do not include any filler text. You should be entirely matter of fact and not follow up with any questions."}
+      ]
+      result = get_converstaion_response(self.model_name, messages)
+      summary = result.get('message', {}).get('content', 'Could not generate summary.')
+    except Exception as e:
+      summary = f"Error generating summary: {e}"
+    self.app.call_from_thread(self._on_summary_result, summary)
+
+  def _on_summary_result(self, summary: str) -> None:
+    self.query_one("#summaryContent").remove()
+    self.query_one("#summaryDialog").mount(
+      Markdown(summary, id="summaryMarkdown"),
+      before=self.query_one("#button_closeSummary")
+    )
+    self.query_one("#button_closeSummary", Button).disabled = False
+
+  def on_button_pressed(self, event: Button.Pressed) -> None:
+    if event.button.id == "button_closeSummary":
+      self.dismiss()

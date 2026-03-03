@@ -21,6 +21,10 @@ SettingsModal {
   margin-bottom: 1;
 }
 
+#ollamaUrlInput {
+  margin-bottom: 1;
+}
+
 #systemPromptInput {
   height: 8;
 }

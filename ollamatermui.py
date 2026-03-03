@@ -3,10 +3,13 @@ from textual.widgets import Footer, Header, Label, Button, Select, ListView, Lis
 from textual.containers import Horizontal, Vertical
 from textual import work
 
+import utils.ollama_utils as ollama_utils_module
 from utils.ollama_utils import get_installed_models, OLLAMA_BASE_URL
+from utils.config import load_config, save_config
 from components.chat_box import ChatBox
 from components.server_info_modal import ServerInfoModal
 from components.settings_modal import SettingsModal
+from components.summary_modal import SummaryModal
 
 
 class OllamaTermUI(App):
@@ -19,14 +22,15 @@ class OllamaTermUI(App):
     "tcss/ollamaui.tcss",
     "tcss/server_info_modal.tcss",
     "tcss/settings_modal.tcss",
+    "tcss/summary_modal.tcss",
   ]
 
 
   def compose(self) -> ComposeResult:
     yield Header()
     with Horizontal(id="statusBar"):
-      yield Button("\u2699", id="button_settings")
-      yield Button("\u2139", id="button_serverInfo")
+      yield Button("\u2699 ", id="button_settings")
+      yield Button("\u2139 ", id="button_serverInfo")
       yield Select([("Loading...", 1)], id="modelSelect", prompt="Loading models...", allow_blank=False)
     with Horizontal():
       with Vertical(id="sidebar"):
@@ -34,6 +38,7 @@ class OllamaTermUI(App):
         yield ListView(id="convoListView")
         yield Button("New Conversation", id="button_newConvo", disabled=True)
         yield Button("Convo Persist: ON", id="button_convoPersist", disabled=True, variant="success")
+        yield Button("Summarize Conversation", id="button_summarizeConvo", disabled=True)
       with Vertical(id="chatContainer"):
         yield Label("Loading models...", id="loadingLabel")
     yield Footer()
@@ -50,7 +55,9 @@ class OllamaTermUI(App):
     self.chatContainer = self.query_one("#chatContainer")
     self.chatContainer.styles.width = "10fr"
     self.carryOver: bool = True
-    self.system_prompt: str = ""
+    cfg = load_config()
+    self.system_prompt: str = cfg["system_prompt"]
+    ollama_utils_module.OLLAMA_BASE_URL = cfg["ollama_url"]
     self.query_one("#statusBar").border_title = "Current Model:"
     self.load_models()
 
@@ -75,6 +82,7 @@ class OllamaTermUI(App):
     self.query_one("#loadingLabel").remove()
     self.query_one("#button_newConvo", Button).disabled = False
     self.query_one("#button_convoPersist", Button).disabled = False
+    self._update_summarize_button()
     if models:
       self._new_conversation(models[0])
 
@@ -98,6 +106,7 @@ class OllamaTermUI(App):
     convo = self._get_conversation(convo_id)
     self.query_one("#modelSelect", Select).value = convo['model']['name']
     await self._remount_chatbox(convo['model'], convo['messages'])
+    self._update_summarize_button()
 
 
   def _save_current_messages(self):
@@ -121,6 +130,14 @@ class OllamaTermUI(App):
     await container.mount(ChatBox(model=model, conversation=messages, id="chatBox"))
 
 
+  def _update_summarize_button(self) -> None:
+    enabled = False
+    if self.active_convo_id is not None:
+      convo = self._get_conversation(self.active_convo_id)
+      enabled = bool(convo and convo.get('messages'))
+    self.query_one("#button_summarizeConvo", Button).disabled = not enabled
+
+
   def action_toggle_dark(self) -> None:
     self.theme = (
       "textual-dark" if self.theme == "textual-light" else "textual-light"
@@ -128,11 +145,18 @@ class OllamaTermUI(App):
 
 
   def on_button_pressed(self, event: Button.Pressed) -> None:
-    if event.button.id == "button_settings":
-      def handle_settings(result: str | None):
+    if event.button.id == "button_summarizeConvo":
+      self._save_current_messages()
+      convo = self._get_conversation(self.active_convo_id)
+      if convo and convo.get('messages'):
+        self.push_screen(SummaryModal(convo['model']['name'], convo['messages']))
+    elif event.button.id == "button_settings":
+      def handle_settings(result: dict | None):
         if result is not None:
-          self.system_prompt = result
-      self.push_screen(SettingsModal(self.system_prompt), handle_settings)
+          self.system_prompt = result["system_prompt"]
+          ollama_utils_module.OLLAMA_BASE_URL = result["url"]
+          save_config(result)
+      self.push_screen(SettingsModal(self.system_prompt, ollama_utils_module.OLLAMA_BASE_URL), handle_settings)
     elif event.button.id == "button_serverInfo":
       active_model = None
       if self.active_convo_id is not None:
@@ -202,6 +226,7 @@ class OllamaTermUI(App):
     convo = self._get_conversation(self.active_convo_id)
     convo['title'] = message.title
     self._refresh_convo_title(convo)
+    self.query_one("#button_summarizeConvo", Button).disabled = False
 
 
   async def _delete_active_conversation(self):
@@ -225,6 +250,7 @@ class OllamaTermUI(App):
         await self.query_one("#chatContainer").query_one("#chatBox").remove()
       except Exception:
         pass
+      self._update_summarize_button()
       if self.installed_models:
         self._new_conversation(self.installed_models[0])
 

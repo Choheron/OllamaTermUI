@@ -18,6 +18,12 @@ SummaryModal {
   text-style: bold;
 }
 
+#summarySubTitle {
+  width: 1fr;
+  content-align: center middle;
+  text-style: italic;
+}
+
 #summaryContent {
   width: 1fr;
   content-align: center middle;

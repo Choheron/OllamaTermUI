@@ -3,8 +3,8 @@ from pathlib import Path
 
 CONFIG_PATH = Path.home() / ".ollamatermui" / "config.json"
 DEFAULT_CONFIG = {
-  "servers": [{"name": "192.168.1.200:11434", "url": "http://192.168.1.200:11434", "system_prompt": ""}],
-  "active_server_name": "192.168.1.200:11434",
+  "servers": [{"name": "localhost", "url": "http://localhost:11434", "system_prompt": ""}],
+  "active_server_name": "localhost",
 }
 
 

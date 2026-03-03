@@ -57,8 +57,14 @@ class OllamaTermUI(App):
     self.chatContainer.styles.width = "10fr"
     self.carryOver: bool = True
     cfg = load_config()
-    self.system_prompt: str = cfg["system_prompt"]
-    ollama_utils_module.OLLAMA_BASE_URL = cfg["ollama_url"]
+    self.servers: list[dict] = cfg.get("servers", [])
+    self.active_server_name: str = cfg.get("active_server_name", "")
+    active = next((s for s in self.servers if s["name"] == self.active_server_name), self.servers[0] if self.servers else None)
+    if active:
+      ollama_utils_module.OLLAMA_BASE_URL = active["url"]
+      self.system_prompt: str = active.get("system_prompt", "")
+    else:
+      self.system_prompt: str = ""
     self.query_one("#statusBar").border_title = "Current Model:"
     self.load_models()
 
@@ -184,11 +190,17 @@ class OllamaTermUI(App):
     elif event.button.id == "button_settings":
       def handle_settings(result: dict | None):
         if result is not None:
-          self.system_prompt = result["system_prompt"]
-          ollama_utils_module.OLLAMA_BASE_URL = result["url"]
-          save_config({"ollama_url": result["url"], "system_prompt": result["system_prompt"]})
-          self.reload_models()
-      self.push_screen(SettingsModal(self.system_prompt, ollama_utils_module.OLLAMA_BASE_URL), handle_settings)
+          prev_url = ollama_utils_module.OLLAMA_BASE_URL
+          self.servers = result["servers"]
+          self.active_server_name = result["active_server_name"]
+          active = next((s for s in self.servers if s["name"] == self.active_server_name), None)
+          if active:
+            ollama_utils_module.OLLAMA_BASE_URL = active["url"]
+            self.system_prompt = active.get("system_prompt", "")
+          save_config(result)
+          if ollama_utils_module.OLLAMA_BASE_URL != prev_url:
+            self.reload_models()
+      self.push_screen(SettingsModal(self.servers, self.active_server_name), handle_settings)
     elif event.button.id == "button_serverInfo":
       active_model = None
       if self.active_convo_id is not None:

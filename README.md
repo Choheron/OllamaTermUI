@@ -6,6 +6,10 @@ A terminal-based chat interface for [Ollama](https://ollama.com), built with [Te
 
 ---
 
+![OllamaTermUI main interface showing the conversation sidebar, model selector, and streaming chat area](/assets/screenshots/MainUIScreenshot.png "OllamaTermUI main interface")
+
+---
+
 ## Features
 
 - **Multi-conversation sidebar** — Maintain several independent conversations at once, each with its own model and message history

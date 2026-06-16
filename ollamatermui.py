@@ -5,26 +5,30 @@ from textual.containers import Horizontal, Vertical
 from textual import work
 
 import utils.ollama_utils as ollama_utils_module
-from utils.ollama_utils import get_installed_models
+from utils.ollama_utils import get_installed_models, get_converstaion_response
 from utils.config import load_config, save_config
 from utils.conversational_utils import save_conversation, load_all_conversations, delete_conversation_file, rename_server_conversations
 from components.chat_box import ChatBox
 from components.server_info_modal import ServerInfoModal
 from components.settings_modal import SettingsModal
 from components.summary_modal import SummaryModal
+from components.convo_info_modal import ConvoInfoModal
 
 
 class RenameConversationModal(ModalScreen):
 
-  def __init__(self, current_title: str) -> None:
+  def __init__(self, current_title: str, model_name: str, conversation: list[dict]) -> None:
     super().__init__()
     self.current_title = current_title
+    self.model_name = model_name
+    self.conversation = conversation
 
   def compose(self):
-    with Vertical(id="confirmDialog"):
+    with Vertical(id="renameDialog"):
       yield Label("Rename conversation:")
       yield Input(value=self.current_title, id="renameInput")
-      with Horizontal(id="confirmButtons"):
+      yield Button("Generate Name", id="button_generateName", disabled=not self.conversation)
+      with Horizontal(id="renameButtons"):
         yield Button("Rename", id="button_confirmRename", variant="primary")
         yield Button("Cancel", id="button_cancelRename")
 
@@ -35,6 +39,8 @@ class RenameConversationModal(ModalScreen):
     if event.button.id == "button_confirmRename":
       new_name = self.query_one("#renameInput", Input).value.strip()
       self.dismiss(new_name if new_name else None)
+    elif event.button.id == "button_generateName":
+      self._generate_name()
     else:
       self.dismiss(None)
 
@@ -45,6 +51,29 @@ class RenameConversationModal(ModalScreen):
     elif event.key == "escape":
       self.dismiss(None)
 
+  @work(thread=True)
+  def _generate_name(self) -> None:
+    self.app.call_from_thread(self._set_generating, True)
+    try:
+      messages = list(self.conversation) + [
+        {"role": "user", "content": "Suggest a short title for this conversation (5 words or fewer, no punctuation, no quotes). Reply with only the title, nothing else."}
+      ]
+      result = get_converstaion_response(self.model_name, messages)
+      name = result.get('message', {}).get('content', '').strip()
+    except Exception:
+      name = ""
+    self.app.call_from_thread(self._on_name_result, name)
+
+  def _set_generating(self, generating: bool) -> None:
+    btn = self.query_one("#button_generateName", Button)
+    btn.disabled = generating
+    btn.label = "Generating..." if generating else "Generate Name"
+
+  def _on_name_result(self, name: str) -> None:
+    if name:
+      self.query_one("#renameInput", Input).value = name
+    self._set_generating(False)
+
 
 class OllamaTermUI(App):
   '''A Textual App to manage and interact with Ollama APIs'''
@@ -54,6 +83,8 @@ class OllamaTermUI(App):
     "tcss/chat_box.tcss",
     "tcss/confirm_clear_modal.tcss",
     "tcss/ollamaui.tcss",
+    "tcss/convo_info_modal.tcss",
+    "tcss/rename_conversation_modal.tcss",
     "tcss/server_info_modal.tcss",
     "tcss/settings_modal.tcss",
     "tcss/summary_modal.tcss",
@@ -74,6 +105,7 @@ class OllamaTermUI(App):
         yield Button("New Conversation", id="button_newConvo", disabled=True)
         yield Button("Convo Persist: ON", id="button_convoPersist", disabled=True, variant="success")
         yield Button("Summarize Conversation", id="button_summarizeConvo", disabled=True)
+        yield Button("Conversation Info", id="button_convoInfo", disabled=True)
       with Vertical(id="chatContainer"):
         yield Label("Loading models...", id="loadingLabel")
     yield Footer()
@@ -278,11 +310,13 @@ class OllamaTermUI(App):
 
 
   def _update_summarize_button(self) -> None:
-    enabled = False
-    if self.active_convo_id is not None:
+    has_convo = self.active_convo_id is not None
+    has_messages = False
+    if has_convo:
       convo = self._get_conversation(self.active_convo_id)
-      enabled = bool(convo and convo.get('messages'))
-    self.query_one("#button_summarizeConvo", Button).disabled = not enabled
+      has_messages = bool(convo and convo.get('messages'))
+    self.query_one("#button_summarizeConvo", Button).disabled = not has_messages
+    self.query_one("#button_convoInfo", Button).disabled = not has_convo
 
 
   def action_toggle_dark(self) -> None:
@@ -297,6 +331,11 @@ class OllamaTermUI(App):
       convo = self._get_conversation(self.active_convo_id)
       if convo and convo.get('messages'):
         self.push_screen(SummaryModal(convo['model']['name'], convo['messages']))
+    elif event.button.id == "button_convoInfo":
+      self._save_current_messages()
+      convo = self._get_conversation(self.active_convo_id)
+      if convo:
+        self.push_screen(ConvoInfoModal(convo))
     elif event.button.id == "button_settings":
       async def handle_settings(result: dict | None):
         if result is not None:
@@ -396,7 +435,7 @@ class OllamaTermUI(App):
           convo['title'] = new_name
           self._refresh_convo_title(convo)
           save_conversation(convo, self.active_server_name)
-      self.push_screen(RenameConversationModal(convo['title']), handle_rename)
+      self.push_screen(RenameConversationModal(convo['title'], convo['model']['name'], convo['messages']), handle_rename)
 
   async def on_chat_box_delete_conversation_requested(self, _: ChatBox.DeleteConversationRequested) -> None:
     await self._delete_active_conversation()

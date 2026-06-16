@@ -1,8 +1,9 @@
 import base64
 import os
+import traceback
 
 from textual.widget import Widget
-from textual.widgets import Label, TextArea, Button, Markdown
+from textual.widgets import Label, TextArea, Button, Markdown, Rule
 from textual.containers import Vertical, Horizontal
 from textual.screen import ModalScreen
 from textual.message import Message
@@ -10,7 +11,44 @@ from textual import events, work
 
 from utils.ollama_utils import stream_conversation_response
 
-from datetime import datetime
+from datetime import datetime, timezone
+
+
+class ErrorDetailModal(ModalScreen):
+
+  def __init__(self, details: str) -> None:
+    super().__init__()
+    self._details = details
+
+  def compose(self):
+    with Vertical(id="errorDialog"):
+      yield Label("Error Details", id="errorDialogTitle")
+      yield Rule()
+      yield TextArea(self._details, id="errorDetailArea", read_only=True)
+      yield Button("Close", id="button_closeErrorDetail")
+
+  def on_button_pressed(self, _: Button.Pressed) -> None:
+    self.dismiss()
+
+  def on_key(self, event) -> None:
+    if event.key == "escape":
+      self.dismiss()
+
+
+class ErrorMessage(Widget):
+  """Inline error row: summary label + button to expand full details."""
+
+  def __init__(self, summary: str, details: str) -> None:
+    super().__init__(classes="errorMessageRow")
+    self._summary = summary
+    self._details = details
+
+  def compose(self):
+    yield Button("Details", classes="errorDetailBtn", variant="warning")
+    yield Label(self._summary, classes="systemMessage")
+
+  def on_button_pressed(self, _: Button.Pressed) -> None:
+    self.app.push_screen(ErrorDetailModal(self._details))
 
 
 class ConfirmClearModal(ModalScreen):
@@ -84,6 +122,8 @@ class ChatBox(Widget):
               model_label = msg.get('model', '')
               md.border_title = f"{model_label} Responded" if model_label else ""
               yield md
+            elif msg['role'] == 'error':
+              yield ErrorMessage(msg['summary'], msg['details'])
       if self.readonly:
         yield Label("[yellow]Warning: model not installed — conversation is read-only.[/yellow]", classes="systemMessage")
       else:
@@ -171,14 +211,14 @@ class ChatBox(Widget):
       if attachment['filename']:
         self.convoViewport.mount(Label(f"📎 {attachment['filename']}", classes="attachmentTag"))
       self.convoViewport.mount(Label(userText or "(image only)", classes="userMessage"))
-      msg = {"role": "user", "content": userText, "images": [attachment["data"]], "_attachment_name": attachment["filename"]}
+      msg = {"role": "user", "content": userText, "images": [attachment["data"]], "_attachment_name": attachment["filename"], "timestamp": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")}
     elif attachment and attachment["type"] == "text":
       injected = f"File: {attachment['filename']}\n```\n{attachment['content']}\n```\n\n{userText}"
       self.convoViewport.mount(Label(injected, classes="userMessage"))
-      msg = {"role": "user", "content": injected}
+      msg = {"role": "user", "content": injected, "timestamp": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")}
     else:
       self.convoViewport.mount(Label(userText, classes="userMessage"))
-      msg = {"role": "user", "content": userText}
+      msg = {"role": "user", "content": userText, "timestamp": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")}
 
     self.convoViewport.scroll_end(animate=True)
     self.inputBox.clear()
@@ -223,8 +263,10 @@ class ChatBox(Widget):
 
   @work(exclusive=True, thread=True)
   def get_model_response(self, msg: dict):
+    import json as _json
     start_ts = datetime.now()
     response_widget = None
+    last_chunk = None
     try:
       self.conversation.append(msg)
       self.app.call_from_thread(self.post_message, ChatBox.ConversationSaveRequested())
@@ -234,20 +276,39 @@ class ChatBox(Widget):
       accumulated = ""
       system_prompt = getattr(self.app, 'system_prompt', '')
       for chunk in stream_conversation_response(self.model['name'], self.conversation, system_prompt):
+        last_chunk = chunk
         if not chunk.get("done", False):
           accumulated += chunk["message"]["content"]
           self.app.call_from_thread(response_widget.update, accumulated)
           self.app.call_from_thread(self._scroll_if_at_bottom)
-      self.conversation.append({"role": "assistant", "content": accumulated, "model": self.model['name']})
+      self.conversation.append({"role": "assistant", "content": accumulated, "model": self.model['name'], "timestamp": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")})
       self.app.call_from_thread(self.post_message, ChatBox.ConversationSaveRequested())
     except Exception as e:
       if response_widget is not None:
         self.app.call_from_thread(response_widget.remove)
+      ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+      error_type = type(e).__name__
+      cause = getattr(e, '__cause__', None) or (e.args[0] if e.args else None)
+      short = str(cause) if cause and str(cause) != str(e) else str(e)
+      summary = f"[dim]{ts}[/dim]  [bold red]{error_type}:[/bold red] {short}"
+      detail_parts = [f"[{ts}]  {error_type}: {e}"]
+      resp = getattr(e, 'response', None)
+      if resp is not None:
+        detail_parts.append(f"\nHTTP {resp.status_code} {resp.reason}")
+        if resp.text:
+          detail_parts.append(f"\nResponse body:\n{resp.text}")
+      elif isinstance(e, KeyError) and last_chunk is not None:
+        detail_parts.append(f"\nUnexpected response chunk:\n{_json.dumps(last_chunk, indent=2)}")
+      detail_parts.append(f"\nTraceback:\n{traceback.format_exc()}")
+      details = "\n".join(detail_parts)
+      self.conversation.pop()
+      error_entry = {"role": "error", "timestamp": ts, "summary": summary, "details": details}
+      self.conversation.append(error_entry)
       self.app.call_from_thread(
           self.convoViewport.mount,
-          Label(f"Error: {e}", classes="systemMessage")
+          ErrorMessage(summary, details)
       )
-      self.conversation.pop()
+      self.app.call_from_thread(self.post_message, ChatBox.ConversationSaveRequested())
     finally:
       end_ts = datetime.now()
       thinking_time = end_ts - start_ts

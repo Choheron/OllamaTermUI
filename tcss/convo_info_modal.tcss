@@ -1,0 +1,29 @@
+ConvoInfoModal {
+  align: center middle;
+}
+
+#infoDialog {
+  width: 65;
+  height: auto;
+  padding: 1 2;
+  border: thick $accent;
+  background: $surface;
+}
+
+#infoTitle {
+  width: 1fr;
+  content-align: center middle;
+  text-style: bold;
+  padding-bottom: 1;
+}
+
+.infoSectionLabel {
+  width: 1fr;
+  text-style: bold;
+  padding-top: 1;
+}
+
+#button_closeInfo {
+  width: 100%;
+  margin-top: 1;
+}

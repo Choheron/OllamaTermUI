@@ -14,11 +14,17 @@ A terminal-based chat interface for [Ollama](https://ollama.com), built with [Te
 
 - **Multi-conversation sidebar** — Maintain several independent conversations at once, each with its own model and message history
 - **Model switching** — Change the active model from the top dropdown mid-session; carry the conversation history over or start fresh depending on the persistence toggle
-- **Multi-server management** — Save multiple named Ollama server configurations and switch between them from the Settings panel; connection is validated before a server is added
+- **File attachments** — Attach images or text files to any message; images are sent via the Ollama vision API and text files are inlined into the message content
+- **Multi-server management** — Save multiple named Ollama server configurations and switch between them from the Settings panel; connection is validated before a server is added or set active
+- **Server fallback** — On startup, if the active server is unreachable, the app automatically falls back to the next available configured server
 - **Per-server system prompts** — Each server stores its own system prompt, which is automatically injected at the start of every conversation on that server
 - **Streaming responses** — Responses stream in token by token with live markdown rendering and smart auto-scroll (only follows the bottom if you're already there)
+- **Model attribution** — Each assistant response displays the model that generated it in the message border
 - **Server info & model management** — View server status, connection health, and active model details; browse all installed models and delete them directly from the UI
 - **Conversation summary** — Generate an AI summary of any conversation using the currently selected model
+- **Conversation info** — View message counts, word and character totals, and a full timeline (start time, last message, duration) for any conversation
+- **Rename conversations** — Rename any conversation manually, or use the Generate Name button to have the model suggest a short title based on the conversation content
+- **Error detail modals** — Errors shown in the chat include a Details button to view the full error trace in a scrollable modal
 - **Persistent config** — Server list, active server, and system prompts are saved to `~/.ollamatermui/config.json` and restored on launch
 - **Persistent conversations** — All conversations are automatically saved to `~/.ollamatermui/conversations/` and restored on launch, scoped per server; conversations whose model is no longer installed reopen as read-only
 
@@ -32,6 +38,8 @@ A terminal-based chat interface for [Ollama](https://ollama.com), built with [Te
 
 ```
 textual
+textual-dev
+textual-fspicker
 requests
 ```
 
@@ -53,7 +61,7 @@ python ollamatermui.py
 
 ### 3. Configure your server
 
-On first launch the app defaults to `http://localhost:11434`. Open the **Settings** panel (⚙ button, top-left) to add your Ollama server URL and give it a name. The app will test the connection before saving. Your server list is persisted to `~/.ollamatermui/config.json` and loaded automatically on every subsequent launch.
+On first launch the app defaults to `http://localhost:11434`. Open the **Settings** panel (gear button, top-left) to add your Ollama server URL and give it a name. The app will test the connection before saving. Your server list is persisted to `~/.ollamatermui/config.json` and loaded automatically on every subsequent launch.
 
 ---
 
@@ -63,8 +71,20 @@ On first launch the app defaults to `http://localhost:11434`. Open the **Setting
 
 - **New Conversation** — Opens a new chat with the currently selected model
 - **Conversation list** — Click an entry in the sidebar to switch to it; conversations are restored automatically on every launch
+- **Rename Conversation** — Click the **Rename** button inside the chat area to rename the conversation manually, or click **Generate Name** in the rename dialog to have the model suggest a title
 - **Delete Conversation** — Click the red **Delete Conversation** button inside the chat area (confirmation required)
 - **Read-only conversations** — If a conversation's model has been uninstalled, it reopens in read-only mode with a warning; the history is still viewable and can be summarized
+
+### File Attachments
+
+Click the attachment button in the input tray to open a file picker. Supported file types:
+
+| Type | Behaviour |
+|---|---|
+| **Images** (.png, .jpg, .jpeg, .gif, .webp, .bmp) | Encoded and sent to Ollama's vision API alongside the message |
+| **Text files** | File contents are inlined into the message body |
+
+The attached filename is shown above the input area once a file is selected. Click the clear button to remove the pending attachment before sending. Attachments are recorded in the conversation history and displayed inline when the conversation is reloaded.
 
 ### Model Switching
 
@@ -80,8 +100,9 @@ Select a model from the dropdown at the top. The **Convo Persist** toggle contro
 Click the gear icon in the top-left to open Settings.
 
 **Servers tab:**
-- The table lists all saved servers; the active one is marked with `●`
-- Select a row and click **Set Active** to switch to a different server — the model list reloads automatically
+- The table lists all saved servers; the active one is marked with a bullet, and each row shows a live ping latency or "Offline" status
+- Select a row and click **Set Active** to switch to a different server (only available when the selected server is online) — the model list reloads automatically
+- Select a row and click **Edit** to change the server's name or URL inline
 - **Test & Add** tests connectivity before adding a new server; invalid or unreachable URLs are rejected
 - The last remaining server cannot be deleted
 
@@ -100,6 +121,15 @@ Click the info icon inside the status bar to open the server panel:
 - Active model details: family, parameter count, quantization level, disk size
 - Full list of all models installed on the server
 - Select a model row and click **Delete** to remove it from the server (confirmation required)
+
+### Conversation Info
+
+Click the **Conversation Info** button in the sidebar to open a summary panel for the active conversation:
+
+- Title and model details (family, parameter count, quantization, disk size)
+- Message counts broken down by role (user, assistant, errors, attachments)
+- Total word and character counts across all messages
+- Timeline showing when the conversation started, when the last message was sent, and the total duration
 
 ### Summarize Conversation
 

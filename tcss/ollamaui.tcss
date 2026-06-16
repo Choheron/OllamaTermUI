@@ -49,3 +49,7 @@
 #button_convoPersist {
   width: 100%;
 }
+
+#button_convoInfo {
+  width: 100%;
+}

@@ -32,6 +32,35 @@ SettingsModal {
   margin-bottom: 1;
 }
 
+#editServerRow {
+  height: auto;
+  margin-bottom: 1;
+  border: round $warning;
+  padding: 1;
+}
+
+#editServerInputs {
+  height: auto;
+  margin-bottom: 1;
+}
+
+#editServerNameInput {
+  width: 1fr;
+  margin-right: 1;
+}
+
+#editServerUrlInput {
+  width: 2fr;
+}
+
+#editServerButtons {
+  height: auto;
+}
+
+#editServerButtons Button {
+  width: 1fr;
+}
+
 #addServerRow {
   height: auto;
   margin-bottom: 1;
